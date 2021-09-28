@@ -1,0 +1,229 @@
+---
+title: "Script for using the Reddit API to Collect Subreddit Data"
+author: "K. Bret Staudt Willet"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Get set up
+
+This section loads the data and packages and starts to process the data.
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo=FALSE, include=FALSE, eval=TRUE)
+library(tidyverse)
+library(anytime)
+library(lubridate)
+library(beepr)
+
+#devtools::install_github("ropenscilabs/roomba")  # <------ currently returns an error and cannot install
+#devtools::install_github("jrosen48/roomba")  # this one works; only have to install once
+library(roomba)
+source("local-functions.R")
+```
+
+## Data Collection
+
+### Posts (Preliminary Data Analysis)
+
+```{r, eval=FALSE}
+subreddit_posts_teachers0 <- 
+  get_posts("Teachers", max_posts = 1000) 
+subreddit_posts_teachers <- 
+  clean_posts(subreddit_posts_teachers0)
+beepr::beep(8)
+```
+
+```{r, eval=FALSE}
+write_csv(subreddit_posts_teachers, "data/subreddit-posts-teachers-oct2-2021.csv")
+```
+
+```{r, message=FALSE}
+subreddit_posts_teachers1 <- 
+  read_csv("data/subreddit-posts-teachers-oct2-2021.csv") %>% 
+  mutate(post_date = floor_date(post_date_time, 'day')) %>%
+  select(subreddit, post_id, post_author, post_date, post_date_time,
+         post_title, post_text, num_comments, post_score, post_link)
+```
+
+```{r, eval=FALSE}
+subreddit_posts_teachers1 <-
+  subreddit_posts_teachers %>% 
+  mutate(post_date = floor_date(post_date_time, 'day'))
+
+earliest_post_teachers <- 
+  min(subreddit_posts_teachers1$post_date)
+last_post_teachers <- 
+  max(subreddit_posts_teachers1$post_date)
+
+subreddit_dates <- 
+  subreddit_posts_teachers1 %>% 
+  count(post_date)
+
+subreddit_dates
+```
+
+Our data collection allowed us to retreive `r nrow(subreddit_posts_teachers1)` posts from r/Teachers, going back to `r earliest_post_teachers`.
+
+### Visualization of Daily Posts by Subreddit
+
+```{r, include=TRUE, message=FALSE, fig.width=8, fig.height=4.5}
+ggplot(data = subreddit_dates, mapping = aes(x=post_date, y=n)) +
+  geom_point() +
+  geom_line() +
+  scale_colour_brewer(palette = "Set1") +
+  xlab(NULL) +
+  ylab("Number of Posts") +
+  ggtitle("r/Teachers posts") +
+  theme_bw() +
+  theme(panel.grid.major = element_line(color = "gray30"),
+        panel.grid.minor = element_line(color = "gray90"),
+        plot.title=element_text(size=48, family='serif'),
+        axis.title=element_text(size=28, family='serif'),
+        axis.text=element_text(size=24, family='serif'),
+        legend.position='bottom',
+        legend.box = 'vertical',
+        legend.box.background = element_rect(),
+        legend.title=element_text(size=28, family='serif'), 
+        legend.text=element_text(size=24, family='serif')
+  )
+```
+
+```{r, eval=FALSE}
+ggsave("output/plot-posts-over-time-oct2.png", width = 8, height = 4.5)
+``` 
+
+### Comments (Preliminary Data Analysis)
+
+```{r, eval=FALSE}
+subreddit_comments_he <-
+  get_comments(subreddit_posts_he) ## This takes a while to run!!!
+dim(subreddit_posts_he); dim(subreddit_comments_he)
+beepr::beep(8)
+```
+
+```{r, eval=FALSE}
+write_csv(subreddit_comments_he, "subreddit-comments-he.csv")
+```
+
+```{r, eval=FALSE}
+subreddit_comments_prof <-
+  get_comments(subreddit_posts_prof) ## This takes a while to run!!!
+dim(subreddit_posts_prof); dim(subreddit_comments_prof)
+beepr::beep(8)
+```
+
+```{r, eval=FALSE}
+write_csv(subreddit_comments_prof, "subreddit-comments-Prof.csv")
+```
+
+```{r, message=FALSE}
+subreddit_comments_he <- 
+  read_csv("r-highereducation-comments-may2020-sep2020.csv")
+subreddit_comments_prof <- 
+  read_csv("r-Professors-comments-may2020-sep2020.csv")
+```
+
+```{r}
+earliest_comment_he <- 
+  min(subreddit_comments_he$comment_date_time) %>% date()
+last_comment_he <- 
+  max(subreddit_comments_he$comment_date_time) %>% date()
+earliest_comment_prof <- 
+  min(subreddit_comments_prof$comment_date_time) %>% date()
+last_comment_prof <- 
+  max(subreddit_comments_prof$comment_date_time) %>% date()
+```
+
+Our data collection allowed us to retreive `r nrow(subreddit_comments_he1)` comments from r/highereducation, going back to `r earliest_comment_he`, and `r nrow(subreddit_comments_prof1)` comments from r/Professors, going back to `r earliest_comment_prof`.
+
+```{r}
+merged_tibble_he <- 
+  merge_posts_comments(subreddit_posts_he, subreddit_comments_he)
+#nrow(subreddit_posts_he); nrow(subreddit_comments_he)
+#length(unique(merged_tibble_he$post_id)); length(unique(merged_tibble_he$comment_id)) - 1 # subtract 1 for NAs
+```
+
+```{r}
+merged_tibble_prof <- 
+  merge_posts_comments(subreddit_posts_prof, subreddit_comments_prof)
+#nrow(subreddit_posts_prof); nrow(subreddit_comments_prof)
+#length(unique(merged_tibble_prof$post_id)); length(unique(merged_tibble_prof$comment_id)) - 1 # subtract 1 for NAs
+```
+
+### Visualization of Daily Comments by Subreddit
+
+```{r}
+to_plot_comments_he <-
+  subreddit_comments_he %>%
+  filter(comment_date_time >= date_start,
+         comment_date_time <= date_end) %>%
+  pull(comment_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(date = as_date(date),
+         subreddit = "r/highereducation")
+
+to_plot_comments_prof <-
+  subreddit_comments_prof %>%
+  filter(comment_date_time >= date_start,
+         comment_date_time <= date_end) %>%
+  pull(comment_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(date = as_date(date),
+         subreddit = "r/Professors")
+
+to_plot_comments <- 
+  bind_rows(to_plot_comments_he, to_plot_comments_prof)
+```
+
+```{r, include=TRUE, message=FALSE, fig.width=16, fig.height=9}
+ggplot(data = to_plot_comments, mapping = aes(x=date, y=n, color=subreddit)) +
+  geom_point(size = 5, alpha=.7) +
+  scale_color_manual(values = c("#63ACBE", "#EE442F")) + 
+  geom_smooth(method='lm', se=FALSE, size=2) +
+  xlab(NULL) +
+  ylab("Number of Commentss") +
+  theme_bw() +
+  theme(panel.grid.major = element_line(color = "gray30"),
+        panel.grid.minor = element_line(color = "gray90"),
+        axis.title=element_text(size=28, family='serif'),
+        axis.text=element_text(size=24, family='serif'),
+        legend.position='bottom',
+        legend.box = 'vertical',
+        legend.box.background = element_rect(),
+        legend.title=element_text(size=28, family='serif'), 
+        legend.text=element_text(size=24, family='serif')
+  ) +
+  labs(color='Subreddit')
+```
+
+```{r, eval=FALSE}
+ggsave("plot-comments-over-time.png", width = 16, height = 9)
+``` 
+
+### Figure 1. Daily contributions to r/highereducation and r/Professors (2019 vs. 2020)
+
+
+### Figure 2. Contributors to r/highereducation and r/Professors (2019 vs. 2020)
+
+
+### Degree of Contribution to r/highereducation and r/Professors (2019 vs. 2020)
+
+
+### Figure 3. Response Rate in r/highereducation and r/Professors (2019 vs. 2020)
+
+
+### Figure 4. Thread Lengths in r/highereducation and r/Professors (2019 vs. 2020)
+
+
+
+
+```{r session, include=TRUE, eval=TRUE}
+devtools::session_info()
+```

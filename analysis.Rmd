@@ -1,0 +1,969 @@
+---
+title: "Closing a semester during the COVID-19 pandemic: Higher education professionals seeking and sharing advice on instructional design strategies in Reddit"
+author: "K. Bret Staudt Willet, Pauline S. Muljana"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo=FALSE, include=FALSE, eval=TRUE)
+library(tidyverse)
+library(anytime)
+library(lubridate)
+library(kableExtra)
+library(ggplot2)
+library(quanteda)
+library(tm)
+library(viridis)
+library(topicmodels)
+library(tidytext)
+library(seriation)
+library(cowplot)
+
+#devtools::install_github("ropenscilabs/roomba")  # <------ currently returns an error and cannot install
+#devtools::install_github("jrosen48/roomba")  # this one works; only have to install once
+library(roomba)
+```
+
+## Introduction
+
+The purpose of this study is to explore how higher-education professionals used Reddit for professional learning in the midst of the COVID-19 pandemic. We frame this inquiry with a systems thinking perspective.
+
+We seek to answer three research questions. We examine the r/Professors and r/highereducation subreddits at the end of the first semester disrupted by COVID-19 and in preparation for the next.
+
+- RQ1: To what extent, if any, did *individual contributions* in the r/Professors and r/highereducation subreddits change?
+- RQ2: To what extent, if any, did *content interactions* in r/Professors and r/highereducation change?
+- RQ3: What are the *popular topics* asked and advised in the r/Professors and r/highereducation subreddits?
+
+For the third research question, we categorize the answer into *institutional*, *faculty*, and *student* factors.
+
+## Read in posts
+
+```{r}
+date_start19 <- 
+  as_datetime("2019-05-01 04:00:00 UTC") %>% 
+  ymd_hms() %>%
+  with_tz(tzone = "US/Eastern")
+date_end19 <- 
+  as_datetime("2019-09-01 03:59:59 UTC") %>% 
+  ymd_hms() %>%
+  with_tz(tzone = "US/Eastern")
+date_start20 <- 
+  as_datetime("2020-05-01 04:00:00 UTC") %>% 
+  ymd_hms() %>%
+  with_tz(tzone = "US/Eastern")
+date_end20 <- 
+  as_datetime("2020-09-01 03:59:59 UTC") %>% 
+  ymd_hms() %>%
+  with_tz(tzone = "US/Eastern")
+```
+
+```{r, message=FALSE}
+subreddit_posts_he19 <- 
+  read_csv("r-highereducation-posts-2019.csv") %>% 
+  mutate(post_date_time = with_tz(post_date_time, tzone = "US/Eastern"),
+         year = year(post_date_time)) %>%
+    filter(post_date_time >= date_start19,
+           post_date_time <= date_end19)
+subreddit_posts_he20 <- 
+  read_csv("r-highereducation-posts-2020.csv") %>% 
+  mutate(post_date_time = with_tz(post_date_time, tzone = "US/Eastern"),
+         year = year(post_date_time)) %>%
+    filter(post_date_time >= date_start20,
+           post_date_time <= date_end20)
+subreddit_posts_prof19 <- 
+  read_csv("r-Professors-posts-2019.csv") %>% 
+  mutate(post_date_time = with_tz(post_date_time, tzone = "US/Eastern"),
+         year = year(post_date_time)) %>%
+  filter(post_date_time >= date_start19,
+         post_date_time <= date_end19)
+subreddit_posts_prof20 <- 
+  read_csv("r-Professors-posts-2020.csv") %>% 
+  mutate(post_date_time = with_tz(post_date_time, tzone = "US/Eastern"),
+         year = year(post_date_time)) %>%
+  filter(post_date_time >= date_start20,
+         post_date_time <= date_end20)
+```
+
+## Read in comments
+
+```{r}
+comments_end19 <- 
+  as_datetime("2019-10-01 03:59:59 UTC") %>% 
+  ymd_hms() %>%
+  with_tz(tzone = "US/Eastern")
+comments_end20 <- 
+  as_datetime("2020-10-01 03:59:59 UTC") %>% 
+  ymd_hms() %>%
+  with_tz(tzone = "US/Eastern")
+```
+
+```{r, message=FALSE}
+subreddit_comments_he19_thru_sept <- 
+  read_csv("r-highereducation-comments-2019.csv") %>% 
+  mutate(comment_date_time = with_tz(comment_date_time, tzone = "US/Eastern"),
+         year = year(comment_date_time)) %>%
+  filter(comment_date_time >= date_start19,
+         comment_date_time <= comments_end19)
+subreddit_comments_he20_thru_sept <- 
+  read_csv("r-highereducation-comments-2020.csv") %>% 
+  mutate(comment_date_time = with_tz(comment_date_time, tzone = "US/Eastern"),
+         year = year(comment_date_time)) %>%
+  filter(comment_date_time >= date_start20,
+         comment_date_time <= comments_end20)
+subreddit_comments_prof19_thru_sept <- 
+  read_csv("r-Professors-comments-2019.csv") %>% 
+  mutate(comment_date_time = with_tz(comment_date_time, tzone = "US/Eastern"),
+         year = year(comment_date_time)) %>%
+  filter(comment_date_time >= date_start19,
+         comment_date_time <= comments_end19)
+subreddit_comments_prof20_thru_sept <- 
+  read_csv("r-Professors-comments-2020.csv") %>% 
+  mutate(comment_date_time = with_tz(comment_date_time, tzone = "US/Eastern"),
+         year = year(comment_date_time)) %>%
+  filter(comment_date_time >= date_start20,
+         comment_date_time <= comments_end20)
+
+subreddit_comments_he19 <- 
+  read_csv("r-highereducation-comments-2019.csv") %>% 
+  mutate(comment_date_time = with_tz(comment_date_time, tzone = "US/Eastern"),
+         year = year(comment_date_time)) %>%
+  filter(comment_date_time >= date_start19,
+         comment_date_time <= date_end19)
+subreddit_comments_he20 <- 
+  read_csv("r-highereducation-comments-2020.csv") %>% 
+  mutate(comment_date_time = with_tz(comment_date_time, tzone = "US/Eastern"),
+         year = year(comment_date_time)) %>%
+  filter(comment_date_time >= date_start20,
+         comment_date_time <= date_end20)
+subreddit_comments_prof19 <- 
+  read_csv("r-Professors-comments-2019.csv") %>% 
+  mutate(comment_date_time = with_tz(comment_date_time, tzone = "US/Eastern"),
+         year = year(comment_date_time)) %>%
+  filter(comment_date_time >= date_start19,
+         comment_date_time <= date_end19)
+subreddit_comments_prof20 <- 
+  read_csv("r-Professors-comments-2020.csv") %>% 
+  mutate(comment_date_time = with_tz(comment_date_time, tzone = "US/Eastern"),
+         year = year(comment_date_time)) %>%
+  filter(comment_date_time >= date_start20,
+         comment_date_time <= date_end20)
+```
+
+### Table 1. Inidividual Contributions by Subreddit (2019 vs. 2020)
+
+```{r, message=FALSE}
+table1_contributions0 <-
+  bind_cols(
+    c("posts", "posters", "comments", "commenters"),
+    c(nrow(subreddit_posts_he19),
+      length(unique(subreddit_posts_he19$post_author)),
+      nrow(subreddit_comments_he19),
+      length(unique(subreddit_comments_he19$comment_author))
+    ),
+    c(nrow(subreddit_posts_he20),
+      length(unique(subreddit_posts_he20$post_author)),
+      nrow(subreddit_comments_he20),
+      length(unique(subreddit_comments_he20$comment_author))
+    ),
+    c(nrow(subreddit_posts_prof19),
+      length(unique(subreddit_posts_prof19$post_author)),
+      nrow(subreddit_comments_prof19),
+      length(unique(subreddit_comments_prof19$comment_author))
+    ),
+    c(nrow(subreddit_posts_prof20),
+      length(unique(subreddit_posts_prof20$post_author)),
+      nrow(subreddit_comments_prof20),
+      length(unique(subreddit_comments_prof20$comment_author))
+    )
+  )
+```
+
+```{r, include=TRUE}
+table1_contributions <-
+  table1_contributions0 %>%
+  knitr::kable(align = 'c',
+               row.names = FALSE,
+               col.names = c("", "2019", "2020", "2019", "2020")
+  ) %>% 
+  kableExtra::add_header_above(
+    c(" " = 1,
+      "r/higheredcuation" = 2, 
+      "r/Professors" = 2)
+  ) %>%
+  kableExtra::kable_styling(c("striped", "bordered"))
+
+table1_contributions
+```
+
+```{r, eval=FALSE}
+# requires webshot::install_phantomjs()
+save_kable(table1_contributions, "output/table1-contributions.png")
+```
+
+### Figure 1. Daily Posts and Comments by Subreddit (2019 vs. 2020)
+
+```{r}
+he19_posts_table <-
+  subreddit_posts_he19 %>%
+  pull(post_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(subreddit = 'r/highereducation',
+         year = '2019',
+         type = 'Posts',
+         date = ymd(date))
+he20_posts_table <-
+  subreddit_posts_he20 %>%
+  pull(post_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(subreddit = 'r/highereducation',
+         year = '2020',
+         type = 'Posts',
+         date = ymd(date))
+he19_comments_table <-
+  subreddit_comments_he19 %>%
+  filter(comment_date_time <= date_end19) %>%
+  pull(comment_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(subreddit = 'r/highereducation',
+         year = '2019',
+         type = 'Comments',
+         date = ymd(date))
+he20_comments_table <-
+  subreddit_comments_he20 %>%
+  filter(comment_date_time <= date_end20) %>%
+  pull(comment_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(subreddit = 'r/highereducation',
+         year = '2020',
+         type = 'Comments',
+         date = ymd(date))
+
+prof19_posts_table <-
+  subreddit_posts_prof19 %>%
+  pull(post_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(subreddit = 'r/Professors',
+         year = '2019',
+         type = 'Posts',
+         date = ymd(date))
+prof20_posts_table <-
+  subreddit_posts_prof20 %>%
+  pull(post_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(subreddit = 'r/Professors',
+         year = '2020',
+         type = 'Posts',
+         date = ymd(date))
+prof19_comments_table <-
+  subreddit_comments_prof19 %>%
+  filter(comment_date_time <= date_end19) %>%
+  pull(comment_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(subreddit = 'r/Professors',
+         year = '2019',
+         type = 'Comments',
+         date = ymd(date))
+prof20_comments_table <-
+  subreddit_comments_prof20 %>%
+  filter(comment_date_time <= date_end20) %>%
+  pull(comment_date_time) %>%
+  date() %>%
+  table() %>% 
+  as_tibble() %>%
+  rename(date = ".") %>%
+  mutate(subreddit = 'r/Professors',
+         year = '2020',
+         type = 'Comments',
+         date = ymd(date))
+
+to_plot <-
+  bind_rows(he19_posts_table, he19_comments_table, 
+            prof19_posts_table, prof19_comments_table,
+            he20_posts_table, he20_comments_table, 
+            prof20_posts_table, prof20_comments_table
+  ) %>%
+  group_by(year) %>%
+  complete(date, nesting(subreddit, type), fill = list(n = 0)) %>%
+  ungroup() %>%
+  mutate(type = factor(type, levels = c("Posts", "Comments")))
+```
+
+```{r, include=TRUE, message=FALSE, fig.width=9, fig.height=9}
+ggplot(data = to_plot, 
+       mapping = aes(x = date, y = n, color = subreddit)) +
+  geom_point(size = 2, alpha=.6) +
+  geom_smooth(size = 0.5) +
+  facet_grid(cols = vars(year), 
+             rows = vars(type),
+             scales = 'free') +
+  scale_color_manual(values = c("#63ACBE", "#EE442F")) + 
+  xlab(NULL) +
+  ylab(NULL) +
+  theme_bw() +
+  theme(panel.grid.major = element_line(color = "gray30"),
+        panel.grid.minor = element_line(color = "gray90"),
+        axis.title=element_text(size = 24, family = 'serif'),
+        axis.text=element_text(size = 14, family = 'serif'),
+        strip.text.x = element_text(size = 24, family = 'serif'),
+        strip.text.y = element_text(size = 24, family = 'serif'),
+        legend.position='bottom',
+        legend.box = 'vertical',
+        legend.box.background = element_rect(),
+        legend.title=element_text(size = 24, family = 'serif'), 
+        legend.text=element_text(size = 18, family = 'serif')
+  ) +
+  labs(color='Subreddit')
+```
+
+```{r, eval=FALSE}
+ggsave("output/fig1-posts-comments-over-time.png", width = 9, height = 9)
+``` 
+
+### Table 2. Content Interactions by Subreddit (2019 vs. 2020)
+
+```{r, message=FALSE}
+he19 <-
+  subreddit_posts_he19 %>%
+  left_join(subreddit_comments_he19_thru_sept, 
+            by=c('subreddit', 'post_id', 'year'))
+he19_posts_n <-
+  he19 %>%
+  pull(post_id) %>%
+  unique() %>%
+  length()
+he19_threads_n <-
+  he19 %>%
+  filter(!is.na(comment_id)) %>%
+  distinct(post_id) %>%
+  nrow() 
+he19_comments_in_threads_n <-
+  he19 %>%
+  filter(!is.na(comment_id)) %>%
+  nrow()
+he19_response_rate <-
+  round(100 * he19_threads_n / he19_posts_n, 2)
+he19_comments_per_thread <-
+  he19 %>%
+  filter(!is.na(comment_id)) %>%
+  group_by(post_id) %>%
+  summarize(n_comments = n())
+he19_thread_length <-
+  he19_comments_per_thread%>%
+  summarize(Mean = round(mean(n_comments), 2),
+            SD = round(sd(n_comments), 2),
+            Median = median(n_comments),
+            Max = max(n_comments)
+  ) %>%
+  unlist(use.names=FALSE)
+he19_col <- 
+  c(he19_posts_n, he19_threads_n, he19_comments_in_threads_n, he19_response_rate, 
+    he19_thread_length
+    )
+
+he20 <-
+  subreddit_posts_he20 %>%
+  left_join(subreddit_comments_he20_thru_sept, 
+            by=c('subreddit', 'post_id', 'year'))
+he20_posts_n <-
+  he20 %>%
+  pull(post_id) %>%
+  unique() %>%
+  length()
+he20_threads_n <-
+  he20 %>%
+  filter(!is.na(comment_id)) %>%
+  distinct(post_id) %>%
+  nrow() 
+he20_comments_in_threads_n <-
+  he20 %>%
+  filter(!is.na(comment_id)) %>%
+  nrow()
+he20_response_rate <-
+  round(100 * he20_threads_n / he20_posts_n, 2)
+he20_comments_per_thread <-
+  he20 %>%
+  filter(!is.na(comment_id)) %>%
+  group_by(post_id) %>%
+  summarize(n_comments = n())
+he20_thread_length <-
+  he20_comments_per_thread%>%
+  summarize(Mean = round(mean(n_comments), 2),
+            SD = round(sd(n_comments), 2),
+            Median = median(n_comments),
+            Max = max(n_comments)
+  ) %>%
+  unlist(use.names=FALSE)
+he20_col <- 
+  c(he20_posts_n, he20_threads_n, he20_comments_in_threads_n, he20_response_rate, 
+    he20_thread_length
+    )
+
+prof19 <-
+  subreddit_posts_prof19 %>%
+  left_join(subreddit_comments_prof19_thru_sept, 
+            by=c('subreddit', 'post_id', 'year'))
+prof19_posts_n <-
+  prof19 %>%
+  pull(post_id) %>%
+  unique() %>%
+  length()
+prof19_threads_n <-
+  prof19 %>%
+  filter(!is.na(comment_id)) %>%
+  distinct(post_id) %>%
+  nrow() 
+prof19_comments_in_threads_n <-
+  prof19 %>%
+  filter(!is.na(comment_id)) %>%
+  nrow()
+prof19_response_rate <-
+  round(100 * prof19_threads_n / prof19_posts_n, 2)
+prof19_comments_per_thread <-
+  prof19 %>%
+  filter(!is.na(comment_id)) %>%
+  group_by(post_id) %>%
+  summarize(n_comments = n())
+prof19_thread_length <-
+  prof19_comments_per_thread%>%
+  summarize(Mean = round(mean(n_comments), 2),
+            SD = round(sd(n_comments), 2),
+            Median = median(n_comments),
+            Max = max(n_comments)
+  ) %>%
+  unlist(use.names=FALSE)
+prof19_col <- 
+  c(prof19_posts_n, prof19_threads_n, prof19_comments_in_threads_n, 
+    prof19_response_rate, prof19_thread_length
+    )
+
+prof20 <-
+  subreddit_posts_prof20 %>%
+  left_join(subreddit_comments_prof20_thru_sept, 
+            by=c('subreddit', 'post_id', 'year'))
+prof20_posts_n <-
+  prof20 %>%
+  pull(post_id) %>%
+  unique() %>%
+  length()
+prof20_threads_n <-
+  prof20 %>%
+  filter(!is.na(comment_id)) %>%
+  distinct(post_id) %>%
+  nrow() 
+prof20_comments_in_threads_n <-
+  prof20 %>%
+  filter(!is.na(comment_id)) %>%
+  nrow()
+prof20_response_rate <-
+  round(100 * prof20_threads_n / prof20_posts_n, 2)
+prof20_comments_per_thread <-
+  prof20 %>%
+  filter(!is.na(comment_id)) %>%
+  group_by(post_id) %>%
+  summarize(n_comments = n())
+prof20_thread_length <-
+  prof20_comments_per_thread%>%
+  summarize(Mean = round(mean(n_comments), 2),
+            SD = round(sd(n_comments), 2),
+            Median = median(n_comments),
+            Max = max(n_comments)
+  ) %>%
+  unlist(use.names=FALSE)
+prof20_col <- 
+  c(prof20_posts_n, prof20_threads_n, prof20_comments_in_threads_n, 
+    prof20_response_rate, prof20_thread_length
+    )
+
+table2_content0 <-
+  bind_cols(
+    c("posts", "threads", "comments in threads", "response rate",
+      "mean", "SD", "Median", "Max"),
+    he19_col, he20_col, prof19_col, prof20_col
+  )
+```
+
+```{r, include=TRUE}
+table2_content <-
+  table2_content0 %>%
+  knitr::kable(align = 'c',
+               row.names = FALSE,
+               col.names = c("", "2019", "2020", "2019", "2020")
+  ) %>% 
+  kableExtra::add_header_above(
+    c(" " = 1,
+      "r/higheredcuation" = 2, 
+      "r/Professors" = 2)
+  ) %>%
+  kableExtra::kable_styling(c("striped", "bordered"))
+
+table2_content
+```
+
+```{r, eval=FALSE}
+# requires webshot::install_phantomjs()
+save_kable(table2_content, "output/table2-content-interactions.png")
+```
+
+### Word Clouds
+
+```{r}
+my_extra_stopwords <-
+  c("NA", "removed", "deleted", "just", "can", "like", "also", "even")
+```
+
+**r/highereducation**
+
+```{r, message=FALSE}
+corpus_posts_he19 <- 
+  subreddit_posts_he19 %>%
+  mutate(text = paste(post_title, post_text),
+         text = tolower(text),
+         text = tm::removePunctuation(text)
+  ) %>%
+  rename(doc_id = post_id) %>%
+  select(doc_id, text) %>%
+  quanteda::corpus(text_field = 'text')
+dfm_posts_he19 <- 
+  quanteda::dfm(corpus_posts_he19, 
+      remove = c(my_extra_stopwords,
+                 quanteda::stopwords("english")),
+      remove_url = TRUE,
+      remove_punct = TRUE,
+      remove_symbols = TRUE,
+      remove_numbers = TRUE)
+
+corpus_posts_he20 <- 
+  subreddit_posts_he20 %>%
+  mutate(text = paste(post_title, post_text),
+         text = tolower(text),
+         text = tm::removePunctuation(text)
+  ) %>%
+  rename(doc_id = post_id) %>%
+  select(doc_id, text) %>%
+  quanteda::corpus(text_field = 'text')
+dfm_posts_he20 <- 
+  quanteda::dfm(corpus_posts_he20, 
+      remove = c(my_extra_stopwords,
+                 quanteda::stopwords("english")),
+      remove_url = TRUE,
+      remove_punct = TRUE,
+      remove_symbols = TRUE,
+      remove_numbers = TRUE)
+
+corpus_comments_he19 <- 
+  subreddit_comments_he19 %>%
+  mutate(text = tolower(comment_text),
+         text = tm::removePunctuation(text)
+  ) %>%
+  rename(doc_id = comment_id) %>%
+  select(doc_id, text) %>%
+  quanteda::corpus(text_field = 'text')
+dfm_comments_he19 <- 
+  quanteda::dfm(corpus_comments_he19, 
+      remove = c(my_extra_stopwords,
+                 quanteda::stopwords("english")),
+      remove_url = TRUE,
+      remove_punct = TRUE,
+      remove_symbols = TRUE,
+      remove_numbers = TRUE)
+
+corpus_comments_he20 <- 
+  subreddit_comments_he20 %>%
+  mutate(text = tolower(comment_text),
+         text = tm::removePunctuation(text)
+  ) %>%
+  rename(doc_id = comment_id) %>%
+  select(doc_id, text) %>%
+  quanteda::corpus(text_field = 'text')
+dfm_comments_he20 <- 
+  quanteda::dfm(corpus_comments_he20, 
+      remove = c(my_extra_stopwords,
+                 quanteda::stopwords("english")),
+      remove_url = TRUE,
+      remove_punct = TRUE,
+      remove_symbols = TRUE,
+      remove_numbers = TRUE)
+```
+
+```{r, include=TRUE, fig.width=9, fig.height=9}
+dfm_posts_he19 %>%
+  textplot_wordcloud(min_count = 10, 
+                     random_order = FALSE, 
+                     rotation = 0.25, 
+                     color = viridis_pal()(8)
+  )
+```
+
+```{r, include=TRUE, fig.width=9, fig.height=9}
+dfm_posts_he20 %>%
+  textplot_wordcloud(min_count = 10, 
+                     random_order = FALSE, 
+                     rotation = 0.25, 
+                     color = viridis_pal()(8)
+  )
+```
+
+```{r, include=TRUE, fig.width=9, fig.height=9}
+dfm_comments_he19 %>%
+  textplot_wordcloud(min_count = 10, 
+                     random_order = FALSE, 
+                     rotation = 0.25, 
+                     color = viridis_pal()(8)
+  )
+```
+
+```{r, include=TRUE, fig.width=9, fig.height=9}
+dfm_comments_he20 %>%
+  textplot_wordcloud(min_count = 10, 
+                     random_order = FALSE, 
+                     rotation = 0.25, 
+                     color = viridis_pal()(8)
+  )
+```
+
+**r/Professors**
+
+```{r, message=FALSE}
+corpus_posts_prof19 <- 
+  subreddit_posts_prof19 %>%
+  mutate(text = paste(post_title, post_text),
+         text = tolower(text),
+         text = tm::removePunctuation(text)
+  ) %>%
+  rename(doc_id = post_id) %>%
+  select(doc_id, text) %>%
+  quanteda::corpus(text_field = 'text')
+dfm_posts_prof19 <- 
+  quanteda::dfm(corpus_posts_prof19, 
+      remove = c(my_extra_stopwords,
+                 quanteda::stopwords("english")),
+      remove_url = TRUE,
+      remove_punct = TRUE,
+      remove_symbols = TRUE,
+      remove_numbers = TRUE)
+
+corpus_posts_prof20 <- 
+  subreddit_posts_prof20 %>%
+  mutate(text = paste(post_title, post_text),
+         text = tolower(text),
+         text = tm::removePunctuation(text)
+  ) %>%
+  rename(doc_id = post_id) %>%
+  select(doc_id, text) %>%
+  quanteda::corpus(text_field = 'text')
+dfm_posts_prof20 <- 
+  quanteda::dfm(corpus_posts_prof20, 
+      remove = c(my_extra_stopwords,
+                 quanteda::stopwords("english")),
+      remove_url = TRUE,
+      remove_punct = TRUE,
+      remove_symbols = TRUE,
+      remove_numbers = TRUE)
+
+corpus_comments_prof19 <- 
+  subreddit_comments_prof19 %>%
+  mutate(text = tolower(comment_text),
+         text = tm::removePunctuation(text)
+  ) %>%
+  rename(doc_id = comment_id) %>%
+  select(doc_id, text) %>%
+  quanteda::corpus(text_field = 'text')
+dfm_comments_prof19 <- 
+  quanteda::dfm(corpus_comments_prof19, 
+      remove = c(my_extra_stopwords,
+                 quanteda::stopwords("english")),
+      remove_url = TRUE,
+      remove_punct = TRUE,
+      remove_symbols = TRUE,
+      remove_numbers = TRUE)
+
+corpus_comments_prof20 <- 
+  subreddit_comments_prof20 %>%
+  mutate(text = tolower(comment_text),
+         text = tm::removePunctuation(text)
+  ) %>%
+  rename(doc_id = comment_id) %>%
+  select(doc_id, text) %>%
+  quanteda::corpus(text_field = 'text')
+dfm_comments_prof20 <- 
+  quanteda::dfm(corpus_comments_prof20, 
+      remove = c(my_extra_stopwords,
+                 quanteda::stopwords("english")),
+      remove_url = TRUE,
+      remove_punct = TRUE,
+      remove_symbols = TRUE,
+      remove_numbers = TRUE)
+```
+
+```{r, include=TRUE, fig.width=9, fig.height=9}
+dfm_posts_prof19 %>%
+  textplot_wordcloud(min_count = 10, 
+                     random_order = FALSE, 
+                     rotation = 0.25, 
+                     color = viridis_pal()(8)
+  )
+```
+
+```{r, include=TRUE, fig.width=9, fig.height=9}
+dfm_posts_prof20 %>%
+  textplot_wordcloud(min_count = 10, 
+                     random_order = FALSE, 
+                     rotation = 0.25, 
+                     color = viridis_pal()(8)
+  )
+```
+
+```{r, include=TRUE, fig.width=9, fig.height=9}
+dfm_comments_prof19 %>%
+  textplot_wordcloud(min_count = 10, 
+                     random_order = FALSE, 
+                     rotation = 0.25, 
+                     color = viridis_pal()(8)
+  )
+```
+
+```{r, include=TRUE, fig.width=9, fig.height=9}
+dfm_comments_prof20 %>%
+  textplot_wordcloud(min_count = 10, 
+                     random_order = FALSE, 
+                     rotation = 0.25, 
+                     color = viridis_pal()(8)
+  )
+```
+
+### Figure 2. Topics by Subreddit (2020)
+
+```{r}
+find_top_terms <- 
+  function(x, year) {
+    x[rowSums(x) != 0, ] %>%
+      topicmodels::LDA(k = 5, 
+                       control = list(seed = 12162020)) %>%
+      tidytext::tidy(matrix = "beta") %>%
+      filter(term != "im") %>%
+      group_by(topic) %>%
+      top_n(10, beta) %>%
+      ungroup() %>%
+      arrange(topic, -beta) %>%
+      mutate(topic = str_c(year, "-", topic))
+  }
+
+top_terms_posts_he19 <- find_top_terms(dfm_posts_he19, 2019)
+top_terms_posts_he20 <- find_top_terms(dfm_posts_he20, 2020)
+
+top_terms_posts_prof19 <- find_top_terms(dfm_posts_prof19, 2019)
+top_terms_posts_prof20 <- find_top_terms(dfm_posts_prof20, 2020)
+
+top_terms_comments_he19 <- find_top_terms(dfm_comments_he19, 2019)
+top_terms_comments_he20 <- find_top_terms(dfm_comments_he20, 2020)
+
+top_terms_comments_prof19 <- find_top_terms(dfm_comments_prof19, 2019)
+top_terms_comments_prof20 <- find_top_terms(dfm_comments_prof20, 2020)
+```
+
+```{r}
+compare_top_terms <- 
+  function(x, y) {
+    merged_terms <-
+      full_join(x, y, by = c("topic", "term", "beta")) %>%
+      complete(topic, term, fill = list(beta = 0))
+    
+    merged_terms_seriated <-
+      merged_terms %>%
+      pivot_wider(names_from = topic,
+                  values_from = beta) %>%
+      column_to_rownames('term') %>%
+      as.matrix() %>%
+      seriation::seriate()
+    
+    terms_ordered <-
+      unique(merged_terms$term)[seriation::get_order(merged_terms_seriated, dim=1)]
+    topics_ordered <-
+      unique(merged_terms$topic)[seriation::get_order(merged_terms_seriated, dim=2)]
+    
+    merged_terms_to_plot <-
+      merged_terms %>%
+      mutate(
+             term = factor(term, levels = terms_ordered),
+             year = sub("-[0-9]", "", topic),
+             topic = sub("20[0-9][0-9]-", "", topic)
+      )
+    
+    merged_terms_to_plot
+  }
+
+top_terms_posts_he_to_plot <- 
+  compare_top_terms(top_terms_posts_he19, top_terms_posts_he20)
+top_terms_posts_prof_to_plot <- 
+  compare_top_terms(top_terms_posts_prof19, top_terms_posts_prof20)
+
+top_terms_comments_he_to_plot <- 
+  compare_top_terms(top_terms_comments_he19, top_terms_comments_he20) %>%
+  mutate(term = fct_rev(term))
+top_terms_comments_prof_to_plot <- 
+  compare_top_terms(top_terms_comments_prof19, top_terms_comments_prof20)
+```
+
+```{r}
+theme_formatting <- 
+  theme(plot.title = element_text(size=20, family='serif', hjust = 0.5),
+        axis.title = element_text(size=16, family='serif'),
+        axis.text = element_text(size=10, family='serif'),
+        strip.text.x = element_text(size = 16, family='serif'),
+        legend.title = element_text(size=8, family='serif'), 
+        legend.text = element_text(size=7, family='serif'),
+        legend.position='left',
+        legend.background = element_blank(),
+        legend.box.background = element_rect(colour='black'),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.background = element_rect(color = 'black')
+  )
+```
+
+```{r, fig.width=4, fig.height=5}
+plot_posts_he <- 
+  ggplot(top_terms_posts_he_to_plot, aes(x = topic, y = term)) +
+  geom_tile(aes(fill = beta), color = 'white', size = 0.2) + 
+  scale_fill_viridis(rescaler = function(x, to = c(0, 1), from = NULL) {
+    ifelse(x < .015, 
+           scales::rescale(x,
+                           to = to,
+                           from = c(min(x, na.rm = TRUE), .015)), 
+           1)
+  }
+  ) +
+  facet_wrap(~ year) +
+  xlab("Topic") +
+  scale_x_discrete(position='bottom') +
+  ylab("Term") +
+  scale_y_discrete(position='right') +
+  theme_bw() +
+  labs(fill = "Topic-Word Density") +
+  ggtitle("r/highereducation Posts") +
+  theme_formatting +
+  panel_border()
+
+plot_posts_he
+```
+
+```{r, fig.width=4, fig.height=5}
+plot_posts_prof <- 
+  ggplot(top_terms_posts_prof_to_plot, aes(x = topic, y = term)) +
+  geom_tile(aes(fill = beta), color = 'white', size = 0.2) + 
+  scale_fill_viridis(rescaler = function(x, to = c(0, 1), from = NULL) {
+    ifelse(x < .015, 
+           scales::rescale(x,
+                           to = to,
+                           from = c(min(x, na.rm = TRUE), .015)), 
+           1)
+  }
+  ) +
+  facet_wrap(~ year) +
+  xlab("Topic") +
+  scale_x_discrete(position='bottom') +
+  ylab("Term") +
+  scale_y_discrete(position='right') +
+  theme_bw() +
+  labs(fill = "Topic-Word Density") +
+  ggtitle("r/Professors Posts") +
+  theme_formatting +
+  panel_border()
+
+plot_posts_prof
+```
+
+```{r, fig.width=4, fig.height=5}
+plot_comments_he <- 
+  ggplot(top_terms_comments_he_to_plot, aes(x = topic, y = term)) +
+  geom_tile(aes(fill = beta), color = 'white', size = 0.2) + 
+  scale_fill_viridis(rescaler = function(x, to = c(0, 1), from = NULL) {
+    ifelse(x < .015, 
+           scales::rescale(x,
+                           to = to,
+                           from = c(min(x, na.rm = TRUE), .015)), 
+           1)
+  }
+  ) +
+  facet_wrap(~ year) +
+  xlab("Topic") +
+  scale_x_discrete(position='bottom') +
+  ylab("Term") +
+  scale_y_discrete(position='right') +
+  theme_bw() +
+  labs(fill = "Topic-Word Density") +
+  ggtitle("r/highereducation Comments") +
+  theme_formatting +
+  panel_border()
+
+plot_comments_he
+```
+
+```{r, fig.width=4, fig.height=5}
+plot_comments_prof <- 
+  ggplot(top_terms_comments_prof_to_plot, aes(x = topic, y = term)) +
+  geom_tile(aes(fill = beta), color = 'white', size = 0.2) + 
+  scale_fill_viridis(rescaler = function(x, to = c(0, 1), from = NULL) {
+    ifelse(x < .015, 
+           scales::rescale(x,
+                           to = to,
+                           from = c(min(x, na.rm = TRUE), .015)), 
+           1)
+  }
+  ) +
+  facet_wrap(~ year) +
+  xlab("Topic") +
+  scale_x_discrete(position='bottom') +
+  ylab("Term") +
+  scale_y_discrete(position='right') +
+  theme_bw() +
+  labs(fill = "Topic-Word Density") +
+  ggtitle("r/Professors Comments") +
+  theme_formatting +
+  panel_border()
+
+plot_comments_prof
+```
+
+```{r, include=TRUE, message=FALSE, fig.width=8, fig.height=10}
+topics_by_subreddit <- 
+  cowplot::plot_grid(plot_posts_he, plot_comments_he,
+                     plot_posts_prof, plot_comments_prof,
+                     nrow = 2
+  )
+
+topics_by_subreddit
+```
+
+```{r, eval=FALSE}
+ggsave("output/fig2-topics-by-subreddit.png", 
+       plot = topics_by_subreddit, 
+       width = 8, height = 12)
+```
+
+```{r session, include=TRUE, eval=TRUE}
+devtools::session_info()
+```
