@@ -35,22 +35,19 @@ beepr::beep(8)
 ```
 
 ```{r, eval=FALSE}
-write_csv(subreddit_posts_teachers, "data/subreddit-posts-teachers-oct2-2021.csv")
+write_csv(subreddit_posts_teachers, "data/subreddit-posts-teachers-dec10-2021.csv")
 ```
 
 ```{r, message=FALSE}
 subreddit_posts_teachers1 <- 
-  read_csv("data/subreddit-posts-teachers-oct2-2021.csv") %>% 
+  #read_csv("data/subreddit-posts-teachers-oct2-2021.csv") %>% 
+  subreddit_posts_teachers %>%
   mutate(post_date = floor_date(post_date_time, 'day')) %>%
   select(subreddit, post_id, post_author, post_date, post_date_time,
          post_title, post_text, num_comments, post_score, post_link)
 ```
 
 ```{r, eval=FALSE}
-subreddit_posts_teachers1 <-
-  subreddit_posts_teachers %>% 
-  mutate(post_date = floor_date(post_date_time, 'day'))
-
 earliest_post_teachers <- 
   min(subreddit_posts_teachers1$post_date)
 last_post_teachers <- 
@@ -90,8 +87,16 @@ ggplot(data = subreddit_dates, mapping = aes(x=post_date, y=n)) +
 ```
 
 ```{r, eval=FALSE}
-ggsave("output/plot-posts-over-time-oct2.png", width = 8, height = 4.5)
+ggsave("output/plot-posts-over-time-dec10.png", width = 8, height = 4.5)
 ``` 
+
+
+
+
+
+
+
+
 
 ### Comments (Preliminary Data Analysis)
 
